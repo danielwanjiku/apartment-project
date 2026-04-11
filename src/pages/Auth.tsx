@@ -35,8 +35,16 @@ const Auth = ({ mode }: AuthProps) => {
 
     try {
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data: loginData, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        // Ensure role exists — assign owner if missing on login
+        if (mode === 'owner' && loginData.user) {
+          const { data: existingRole } = await supabase
+            .from('user_roles').select('role').eq('user_id', loginData.user.id).maybeSingle();
+          if (!existingRole) {
+            await supabase.from('user_roles').insert({ user_id: loginData.user.id, role: 'owner' });
+          }
+        }
         toast.success('Logged in successfully!');
         navigate(mode === 'owner' ? '/owner' : '/tenant');
       } else {
