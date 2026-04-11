@@ -25,52 +25,46 @@ const StatsCards = ({ tenants, floors, onOpenDues, onOpenRevenue }: StatsCardsPr
   const expectedThisMonth = tenants.reduce((sum, t) => sum + t.monthlyRent, 0);
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 gap-3">
       <Card className="shadow-sm">
-        <CardContent className="p-4">
-          <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-            <DollarSign className="w-4 h-4" />
+        <CardContent className="p-3 sm:p-4">
+          <div className="flex items-center gap-1.5 text-muted-foreground text-xs sm:text-sm mb-1">
+            <DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <span>Expected ({currentMonthLabel})</span>
           </div>
-          <p className="font-heading text-2xl font-bold text-foreground">KSh {expectedThisMonth.toLocaleString()}</p>
+          <p className="font-heading text-xl sm:text-2xl font-bold text-foreground">KSh {expectedThisMonth.toLocaleString()}</p>
         </CardContent>
       </Card>
 
-      <Card
-        className="shadow-sm cursor-pointer hover:border-primary transition-colors"
-        onClick={onOpenRevenue}
-      >
-        <CardContent className="p-4">
-          <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-            <TrendingUp className="w-4 h-4" />
+      <Card className="shadow-sm cursor-pointer hover:border-primary transition-colors" onClick={onOpenRevenue}>
+        <CardContent className="p-3 sm:p-4">
+          <div className="flex items-center gap-1.5 text-muted-foreground text-xs sm:text-sm mb-1">
+            <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <span>Collected ({currentMonthLabel})</span>
           </div>
-          <p className="font-heading text-2xl font-bold text-primary">KSh {collected.toLocaleString()}</p>
-          <p className="text-xs text-muted-foreground mt-1">Click to view by period</p>
+          <p className="font-heading text-xl sm:text-2xl font-bold text-primary">KSh {collected.toLocaleString()}</p>
+          <p className="text-xs text-muted-foreground mt-1 hidden sm:block">Click to view by period</p>
         </CardContent>
       </Card>
 
-      <Card
-        className="shadow-sm cursor-pointer hover:border-destructive transition-colors"
-        onClick={onOpenDues}
-      >
-        <CardContent className="p-4">
-          <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-            <AlertTriangle className="w-4 h-4" />
+      <Card className="shadow-sm cursor-pointer hover:border-destructive transition-colors" onClick={onOpenDues}>
+        <CardContent className="p-3 sm:p-4">
+          <div className="flex items-center gap-1.5 text-muted-foreground text-xs sm:text-sm mb-1">
+            <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <span>Dues ({currentMonthLabel})</span>
           </div>
-          <p className="font-heading text-2xl font-bold text-destructive">KSh {currentMonthDues.toLocaleString()}</p>
-          <p className="text-xs text-muted-foreground mt-1">Click to view by period</p>
+          <p className="font-heading text-xl sm:text-2xl font-bold text-destructive">KSh {currentMonthDues.toLocaleString()}</p>
+          <p className="text-xs text-muted-foreground mt-1 hidden sm:block">Click to view by period</p>
         </CardContent>
       </Card>
 
       <Card className="shadow-sm">
-        <CardContent className="p-4">
-          <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-            <Home className="w-4 h-4" />
+        <CardContent className="p-3 sm:p-4">
+          <div className="flex items-center gap-1.5 text-muted-foreground text-xs sm:text-sm mb-1">
+            <Home className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <span>Vacant Units</span>
           </div>
-          <p className="font-heading text-2xl font-bold text-muted-foreground">{vacantCount}</p>
+          <p className="font-heading text-xl sm:text-2xl font-bold text-muted-foreground">{vacantCount}</p>
         </CardContent>
       </Card>
     </div>

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { Building2 } from 'lucide-react';
 import { useAppState } from '@/hooks/useAppState';
 import { supabase } from '@/integrations/supabase/client';
 import { FloorConfig, Tenant, getArrearsMonths, shouldShowReminder, distributePayment } from '@/lib/types';
@@ -17,7 +18,7 @@ import RevenueDialog from '@/components/dashboard/RevenueDialog';
 import DuesDialog from '@/components/dashboard/DuesDialog';
 
 const Index = () => {
-  const { state, updateState } = useAppState();
+  const { state, updateState, loadedFromDb } = useAppState();
   const [showDuesOnly, setShowDuesOnly] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [revenueOpen, setRevenueOpen] = useState(false);
@@ -247,6 +248,17 @@ const Index = () => {
     }
   }, [updateState, apartmentDbId]);
 
+  if (!loadedFromDb) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-3">
+          <Building2 className="w-12 h-12 mx-auto text-primary animate-pulse" />
+          <p className="text-muted-foreground">Loading your apartment...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!state.configured) {
     return <SetupWizard onComplete={handleSetup} />;
   }
@@ -273,7 +285,7 @@ const Index = () => {
           reminderMessage={reminder.show && unpaidExists ? reminder.message : null}
         />
 
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 pt-16 lg:pt-6 space-y-6">
         <StatsCards tenants={state.tenants} floors={state.floors} onOpenDues={() => setDuesOpen(true)} onOpenRevenue={() => setRevenueOpen(true)} />
         <SearchBar value={searchQuery} onChange={setSearchQuery} />
 
