@@ -1,42 +1,78 @@
 import { DollarSign, TrendingUp, AlertTriangle, Home } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Tenant, FloorConfig, getAllUnits, getTotalArrears } from '@/lib/types';
+import { Tenant, FloorConfig, getAllUnits, getMonthDues, getEffectiveCollectedForMonth } from '@/lib/types';
 
 interface StatsCardsProps {
   tenants: Tenant[];
   floors: FloorConfig[];
+  onOpenDues: () => void;
+  onOpenRevenue: () => void;
 }
 
-const StatsCards = ({ tenants, floors }: StatsCardsProps) => {
+const StatsCards = ({ tenants, floors, onOpenDues, onOpenRevenue }: StatsCardsProps) => {
   const allUnits = getAllUnits(floors);
   const vacantCount = allUnits.length - tenants.length;
-  const expectedRent = tenants.reduce((sum, t) => sum + t.monthlyRent, 0);
-  const totalDues = tenants.reduce((sum, t) => sum + getTotalArrears(t), 0);
 
   const now = new Date();
   const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const collected = tenants.reduce((sum, t) => sum + (t.payments[currentKey] || 0), 0);
+  const currentMonthLabel = now.toLocaleString('default', { month: 'short', year: 'numeric' });
 
-  const stats = [
-    { label: 'Expected', value: `₹${expectedRent.toLocaleString()}`, icon: DollarSign, color: 'text-foreground' },
-    { label: 'Collected', value: `₹${collected.toLocaleString()}`, icon: TrendingUp, color: 'text-primary' },
-    { label: 'Total Dues', value: `₹${totalDues.toLocaleString()}`, icon: AlertTriangle, color: 'text-destructive' },
-    { label: 'Vacant', value: vacantCount.toString(), icon: Home, color: 'text-muted-foreground' },
-  ];
+  const collected = tenants.reduce((sum, t) =>
+    sum + getEffectiveCollectedForMonth(t, currentKey), 0);
+  const currentMonthDues = getMonthDues(tenants, currentKey);
+
+  // Expected = current month's total rent across all tenants
+  const expectedThisMonth = tenants.reduce((sum, t) => sum + t.monthlyRent, 0);
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      {stats.map((stat) => (
-        <Card key={stat.label} className="shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-              <stat.icon className="w-4 h-4" />
-              <span>{stat.label}</span>
-            </div>
-            <p className={`font-heading text-2xl font-bold ${stat.color}`}>{stat.value}</p>
-          </CardContent>
-        </Card>
-      ))}
+      <Card className="shadow-sm">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
+            <DollarSign className="w-4 h-4" />
+            <span>Expected ({currentMonthLabel})</span>
+          </div>
+          <p className="font-heading text-2xl font-bold text-foreground">KSh {expectedThisMonth.toLocaleString()}</p>
+        </CardContent>
+      </Card>
+
+      <Card
+        className="shadow-sm cursor-pointer hover:border-primary transition-colors"
+        onClick={onOpenRevenue}
+      >
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
+            <TrendingUp className="w-4 h-4" />
+            <span>Collected ({currentMonthLabel})</span>
+          </div>
+          <p className="font-heading text-2xl font-bold text-primary">KSh {collected.toLocaleString()}</p>
+          <p className="text-xs text-muted-foreground mt-1">Click to view by period</p>
+        </CardContent>
+      </Card>
+
+      <Card
+        className="shadow-sm cursor-pointer hover:border-destructive transition-colors"
+        onClick={onOpenDues}
+      >
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
+            <AlertTriangle className="w-4 h-4" />
+            <span>Dues ({currentMonthLabel})</span>
+          </div>
+          <p className="font-heading text-2xl font-bold text-destructive">KSh {currentMonthDues.toLocaleString()}</p>
+          <p className="text-xs text-muted-foreground mt-1">Click to view by period</p>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-sm">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
+            <Home className="w-4 h-4" />
+            <span>Vacant Units</span>
+          </div>
+          <p className="font-heading text-2xl font-bold text-muted-foreground">{vacantCount}</p>
+        </CardContent>
+      </Card>
     </div>
   );
 };

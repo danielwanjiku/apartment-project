@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { isValidKenyanPhone, normaliseKenyanPhone, phoneErrorMessage } from '@/lib/phone';
 import { Building2, Mail, Lock, User, Phone } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,12 +14,20 @@ interface AuthProps {
 }
 
 const Auth = ({ mode }: AuthProps) => {
+  const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
+  const [phoneError, setPhoneError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const handlePhoneChange = (val: string) => {
+    setPhone(val);
+    if (val && !isValidKenyanPhone(val)) setPhoneError(phoneErrorMessage);
+    else setPhoneError('');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,6 +38,7 @@ const Auth = ({ mode }: AuthProps) => {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         toast.success('Logged in successfully!');
+        navigate(mode === 'owner' ? '/owner' : '/tenant');
       } else {
         const { data, error } = await supabase.auth.signUp({
           email,
@@ -40,15 +51,9 @@ const Auth = ({ mode }: AuthProps) => {
         if (error) throw error;
 
         if (data.user) {
-          // Assign role
-          await supabase.from('user_roles').insert({
-            user_id: data.user.id,
-            role: mode,
-          });
-
-          // Update profile with phone
-          if (phone) {
-            await supabase.from('profiles').update({ phone }).eq('user_id', data.user.id);
+          await supabase.from('user_roles').insert({ user_id: data.user.id, role: mode });
+          if (phone && isValidKenyanPhone(phone)) {
+            await supabase.from('profiles').update({ phone: normaliseKenyanPhone(phone) }).eq('user_id', data.user.id);
           }
         }
 
@@ -64,9 +69,12 @@ const Auth = ({ mode }: AuthProps) => {
   const handleGoogleLogin = async () => {
     setLoading(true);
     try {
+      const redirectTo = mode === 'owner'
+        ? `${window.location.origin}/owner`
+        : `${window.location.origin}/tenant/setup`;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: window.location.origin },
+        options: { redirectTo },
       });
       if (error) toast.error('Google sign-in failed');
     } catch {
@@ -99,7 +107,8 @@ const Auth = ({ mode }: AuthProps) => {
                 </div>
                 <div className="space-y-1.5">
                   <Label className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5" /> Phone</Label>
-                  <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+254..." />
+                  <Input value={phone} onChange={(e) => handlePhoneChange(e.target.value)} placeholder="07XXXXXXXX or +254XXXXXXXXX" className={phoneError ? 'border-destructive' : ''} />
+                  {phoneError && <p className="text-xs text-destructive">{phoneError}</p>}
                 </div>
               </>
             )}

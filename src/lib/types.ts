@@ -2,6 +2,7 @@ export interface Tenant {
   id: string;
   unitId: string;
   name: string;
+  idNumber: string;
   contact: string;
   monthlyRent: number;
   securityDeposit: number;
@@ -71,17 +72,16 @@ const getDueMonthKeys = (tenant: Tenant): string[] => {
   const now = new Date();
   const months: string[] = [];
 
-  let cursor = new Date(start.getFullYear(), start.getMonth(), 1);
-  if (start.getDate() > 10) {
-    cursor.setMonth(cursor.getMonth() + 1);
-  }
+  // Always start from the move-in month — no grace period skip
+  const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
 
   const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
   while (true) {
     const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
     if (key > currentMonthKey) break;
-    if (key === currentMonthKey && now.getDate() < 10) break;
+    // Only skip current month if we're before the 10th AND tenant hasn't moved in yet this month
+    if (key === currentMonthKey && now.getDate() < 10 && start.getMonth() !== now.getMonth()) break;
     months.push(key);
     cursor.setMonth(cursor.getMonth() + 1);
   }
@@ -122,6 +122,8 @@ export const getPaymentBreakdown = (tenant: Tenant): MonthPaymentStatus[] => {
 
 /** Get months with outstanding arrears (after carry-forward) */
 export const getArrearsMonths = (tenant: Tenant): string[] => {
+  // If the net total is fully paid, no arrears — even if individual months look negative
+  if (getTotalArrears(tenant) === 0) return [];
   const breakdown = getPaymentBreakdown(tenant);
   return breakdown.filter((m) => m.balance < 0).map((m) => m.month);
 };
@@ -148,7 +150,78 @@ export const getCurrentMonthDue = (tenant: Tenant): number => {
 
 /** Check if tenant is fully paid (no arrears) */
 export const isFullyPaid = (tenant: Tenant): boolean => {
-  return getArrearsMonths(tenant).length === 0;
+  return getTotalArrears(tenant) === 0;
+};
+
+/** Get total dues for a specific month key (YYYY-MM) across all tenants */
+export const getMonthDues = (tenants: Tenant[], monthKey: string): number => {
+  return tenants.reduce((sum, t) => {
+    // If tenant has no net arrears overall, no month shows as due
+    if (getTotalArrears(t) === 0) return sum;
+    const breakdown = getPaymentBreakdown(t);
+    const entry = breakdown.find(m => m.month === monthKey);
+    if (!entry) return sum;
+    return sum + Math.max(0, -entry.balance);
+  }, 0);
+};
+
+/** Get total dues for a range of month keys */
+export const getRangeDues = (tenants: Tenant[], monthKeys: string[]): { month: string; dues: number; expected: number }[] => {
+  return monthKeys.map(month => {
+    const expected = tenants.reduce((s, t) => s + t.monthlyRent, 0);
+    const dues = tenants.reduce((sum, t) => {
+      if (getTotalArrears(t) === 0) return sum;
+      const breakdown = getPaymentBreakdown(t);
+      const entry = breakdown.find(m => m.month === month);
+      if (!entry) return sum;
+      return sum + Math.max(0, -entry.balance);
+    }, 0);
+    return { month, dues, expected };
+  });
+}; 
+
+/** Distribute a lump sum payment across unpaid months (oldest first).
+ *  Returns a map of { month -> amount to add } */
+export const distributePayment = (tenant: Tenant, totalAmount: number): Record<string, number> => {
+  const breakdown = getPaymentBreakdown(tenant);
+  const distribution: Record<string, number> = {};
+  let remaining = totalAmount;
+
+  // Fill unpaid months oldest first
+  for (const entry of breakdown) {
+    if (remaining <= 0) break;
+    const owed = Math.max(0, -entry.balance); // how much still owed for this month
+    if (owed > 0) {
+      const allocate = Math.min(remaining, owed);
+      distribution[entry.month] = (distribution[entry.month] || 0) + allocate;
+      remaining -= allocate;
+    }
+  }
+
+  // Any remainder goes to the current month
+  if (remaining > 0) {
+    const now = new Date();
+    const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    distribution[currentKey] = (distribution[currentKey] || 0) + remaining;
+  }
+
+  return distribution;
+};
+
+/** For revenue reporting: distribute total payments oldest-first to show
+ *  how much was effectively collected for each month, regardless of which
+ *  month the payment was physically recorded in. */
+export const getEffectiveCollectedForMonth = (tenant: Tenant, targetMonth: string): number => {
+  const breakdown = getPaymentBreakdown(tenant);
+  const totalPaid = Object.values(tenant.payments || {}).reduce((s, v) => s + v, 0);
+  let remaining = totalPaid;
+  for (const entry of breakdown) {
+    if (remaining <= 0) break;
+    const allocated = Math.min(remaining, entry.due);
+    remaining -= allocated;
+    if (entry.month === targetMonth) return allocated;
+  }
+  return 0;
 };
 
 export const shouldShowReminder = (apartmentName: string): { show: boolean; message: string } => {

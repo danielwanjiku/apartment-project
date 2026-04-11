@@ -11,9 +11,10 @@ interface FloorSectionProps {
   onAddTenant: (unitId: string) => void;
   onMarkPaid: (tenantId: string, month: string) => void;
   onDeleteTenant: (tenantId: string) => void;
+  onEditTenant: (tenantId: string) => void;
 }
 
-const FloorSection = ({ floor, tenants, showDuesOnly, searchQuery, onAddTenant, onMarkPaid, onDeleteTenant }: FloorSectionProps) => {
+const FloorSection = ({ floor, tenants, showDuesOnly, searchQuery, onAddTenant, onMarkPaid, onDeleteTenant, onEditTenant }: FloorSectionProps) => {
   const units: string[] = [];
   for (let i = 0; i < floor.unitCount; i++) {
     units.push(getUnitId(floor.floorIndex, i));
@@ -45,6 +46,7 @@ const FloorSection = ({ floor, tenants, showDuesOnly, searchQuery, onAddTenant, 
                 tenant={tenant}
                 onMarkPaid={onMarkPaid}
                 onDelete={onDeleteTenant}
+                onEdit={onEditTenant}
               />
             );
           }

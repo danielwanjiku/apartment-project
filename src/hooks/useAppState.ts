@@ -10,9 +10,9 @@ const migrateTenant = (t: any): Tenant => {
       payments[month] = t.monthlyRent || 0;
     }
     const { paidMonths, ...rest } = t;
-    return { ...rest, payments };
+    return { ...rest, idNumber: rest.idNumber || '', payments };
   }
-  return { ...t, payments: t.payments || {} };
+  return { ...t, idNumber: t.idNumber || '', payments: t.payments || {} };
 };
 
 export const useAppState = () => {

@@ -44,14 +44,14 @@ const PaymentHistory = ({ tenant }: PaymentHistoryProps) => {
             >
               <span className="font-medium">{formatMonth(m.month)}</span>
               <div className="flex items-center gap-2">
-                <span>₹{m.paid.toLocaleString()} / ₹{m.due.toLocaleString()}</span>
+                <span>KSh {m.paid.toLocaleString()} / KSh {m.due.toLocaleString()}</span>
                 {isPaid ? (
                   <Badge variant="secondary" className="bg-tenant-paid-border text-tenant-paid-text text-[10px] gap-0.5 px-1.5 py-0">
                     <CheckCircle2 className="w-2.5 h-2.5" /> Paid
                   </Badge>
                 ) : (
                   <Badge variant="secondary" className="bg-tenant-due-border text-tenant-due-text text-[10px] gap-0.5 px-1.5 py-0">
-                    <AlertCircle className="w-2.5 h-2.5" /> ₹{Math.abs(m.balance).toLocaleString()} due
+                    <AlertCircle className="w-2.5 h-2.5" /> KSh {Math.abs(m.balance).toLocaleString()} due
                   </Badge>
                 )}
               </div>

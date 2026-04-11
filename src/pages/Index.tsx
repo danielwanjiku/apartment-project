@@ -1,23 +1,30 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useAppState } from '@/hooks/useAppState';
 import { supabase } from '@/integrations/supabase/client';
-import { FloorConfig, Tenant, getArrearsMonths, shouldShowReminder } from '@/lib/types';
+import { FloorConfig, Tenant, getArrearsMonths, shouldShowReminder, distributePayment } from '@/lib/types';
 import Navbar from '@/components/dashboard/Navbar';
+import DashboardSidebar from '@/components/dashboard/DashboardSidebar';
 import SetupWizard from '@/components/dashboard/SetupWizard';
 import FloorSection from '@/components/dashboard/FloorSection';
 import AddTenantDialog from '@/components/dashboard/AddTenantDialog';
 import DeleteTenantDialog from '@/components/dashboard/DeleteTenantDialog';
+import EditTenantDialog from '@/components/dashboard/EditTenantDialog';
 import SettingsDialog from '@/components/dashboard/SettingsDialog';
 import StatsCards from '@/components/dashboard/StatsCards';
 import SearchBar from '@/components/dashboard/SearchBar';
 import PaymentDialog from '@/components/dashboard/PaymentDialog';
+import RevenueDialog from '@/components/dashboard/RevenueDialog';
+import DuesDialog from '@/components/dashboard/DuesDialog';
 
 const Index = () => {
   const { state, updateState } = useAppState();
   const [showDuesOnly, setShowDuesOnly] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [revenueOpen, setRevenueOpen] = useState(false);
+  const [duesOpen, setDuesOpen] = useState(false);
   const [addTenantUnit, setAddTenantUnit] = useState<string | null>(null);
   const [deleteTenantId, setDeleteTenantId] = useState<string | null>(null);
+  const [editTenantId, setEditTenantId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentTarget, setPaymentTarget] = useState<{ tenantId: string; month: string } | null>(null);
   const [apartmentDbId, setApartmentDbId] = useState<string | null>(null);
@@ -77,6 +84,7 @@ const Index = () => {
             apartment_id: apartmentDbId,
             unit_id: tenant.unitId,
             name: tenant.name,
+            id_number: tenant.idNumber,
             contact: tenant.contact,
             monthly_rent: tenant.monthlyRent,
             security_deposit: tenant.securityDeposit,
@@ -104,7 +112,8 @@ const Index = () => {
         const { data: payments } = await supabase
           .from('payments')
           .select('month, amount')
-          .eq('tenant_id', dbT.id);
+          .eq('tenant_id', dbT.id)
+          .neq('payment_method', 'deposit');
 
         if (!payments || payments.length === 0) continue;
 
@@ -144,7 +153,7 @@ const Index = () => {
     updateState((prev) => ({ ...prev, apartmentName: name, floors, configured: true }));
   }, [updateState]);
 
-  const handleAddTenant = useCallback((data: { name: string; contact: string; monthlyRent: number; securityDeposit: number; moveInDate: string }) => {
+  const handleAddTenant = useCallback((data: { name: string; idNumber: string; contact: string; monthlyRent: number; securityDeposit: number; moveInDate: string }) => {
     if (!addTenantUnit) return;
     const tenant: Tenant = {
       id: crypto.randomUUID(),
@@ -160,25 +169,47 @@ const Index = () => {
     setPaymentTarget({ tenantId, month });
   }, []);
 
-  const handleRecordPayment = useCallback(async (tenantId: string, month: string, amount: number) => {
-    // Update local state
-    updateState((prev) => ({
-      ...prev,
-      tenants: prev.tenants.map((t) =>
-        t.id === tenantId
-          ? { ...t, payments: { ...t.payments, [month]: (t.payments[month] || 0) + amount } }
-          : t
-      ),
-    }));
+  const handleRecordPayment = useCallback(async (tenantId: string, month: string, amount: number, type: 'rent' | 'deposit' = 'rent') => {
+    if (type === 'rent') {
+      const tenant = state.tenants.find(t => t.id === tenantId);
+      if (tenant) {
+        // Distribute payment across unpaid months oldest first
+        const distribution = distributePayment(tenant, amount);
 
-    // Also write to DB
+        // Update local state with distributed amounts
+        updateState((prev) => ({
+          ...prev,
+          tenants: prev.tenants.map((t) => {
+            if (t.id !== tenantId) return t;
+            const updatedPayments = { ...t.payments };
+            for (const [m, amt] of Object.entries(distribution)) {
+              updatedPayments[m] = (updatedPayments[m] || 0) + amt;
+            }
+            return { ...t, payments: updatedPayments };
+          }),
+        }));
+
+        // Write each month's allocation to DB
+        for (const [m, amt] of Object.entries(distribution)) {
+          await supabase.from('payments').insert({
+            tenant_id: tenantId,
+            month: m,
+            amount: amt,
+            payment_method: 'rent',
+          });
+        }
+        return;
+      }
+    }
+
+    // Deposit — just record as-is
     await supabase.from('payments').insert({
       tenant_id: tenantId,
       month,
       amount,
-      payment_method: 'manual',
+      payment_method: type,
     });
-  }, [updateState]);
+  }, [updateState, state.tenants]);
 
   const handleDeleteTenant = useCallback(async () => {
     if (!deleteTenantId) return;
@@ -191,10 +222,28 @@ const Index = () => {
     setDeleteTenantId(null);
   }, [deleteTenantId, updateState]);
 
-  const handleUpdateName = useCallback(async (name: string) => {
-    updateState((prev) => ({ ...prev, apartmentName: name }));
+  const handleEditTenant = useCallback(async (tenantId: string, data: { name: string; idNumber: string; contact: string; monthlyRent: number; securityDeposit: number; moveInDate: string }) => {
+    updateState((prev) => ({
+      ...prev,
+      tenants: prev.tenants.map((t) =>
+        t.id === tenantId ? { ...t, ...data } : t
+      ),
+    }));
+    await supabase.from('tenants').update({
+      name: data.name,
+      id_number: data.idNumber,
+      contact: data.contact,
+      monthly_rent: data.monthlyRent,
+      security_deposit: data.securityDeposit,
+      move_in_date: data.moveInDate,
+    }).eq('id', tenantId);
+    setEditTenantId(null);
+  }, [updateState]);
+
+  const handleUpdateSettings = useCallback(async (name: string, floors: FloorConfig[]) => {
+    updateState((prev) => ({ ...prev, apartmentName: name, floors }));
     if (apartmentDbId) {
-      await supabase.from('apartments').update({ name }).eq('id', apartmentDbId);
+      await supabase.from('apartments').update({ name, floors: floors as any }).eq('id', apartmentDbId);
     }
   }, [updateState, apartmentDbId]);
 
@@ -206,18 +255,26 @@ const Index = () => {
   const payingTenant = paymentTarget ? state.tenants.find((t) => t.id === paymentTarget.tenantId) : null;
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar
+    <div className="flex min-h-screen bg-background">
+      {/* Sidebar */}
+      <DashboardSidebar
         apartmentName={state.apartmentName}
         duesCount={duesCount}
         showDuesOnly={showDuesOnly}
         onToggleDues={() => setShowDuesOnly((p) => !p)}
         onOpenSettings={() => setSettingsOpen(true)}
-        reminderMessage={reminder.show && unpaidExists ? reminder.message : null}
+        onOpenRevenue={() => setRevenueOpen(true)}
+        onOpenDues={() => setDuesOpen(true)}
       />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        <StatsCards tenants={state.tenants} floors={state.floors} />
+      {/* Main content */}
+      <div className="flex-1 flex flex-col min-w-0">
+        <Navbar
+          reminderMessage={reminder.show && unpaidExists ? reminder.message : null}
+        />
+
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        <StatsCards tenants={state.tenants} floors={state.floors} onOpenDues={() => setDuesOpen(true)} onOpenRevenue={() => setRevenueOpen(true)} />
         <SearchBar value={searchQuery} onChange={setSearchQuery} />
 
         {state.floors.map((floor) => (
@@ -230,6 +287,7 @@ const Index = () => {
             onAddTenant={(unitId) => setAddTenantUnit(unitId)}
             onMarkPaid={handleMarkPaid}
             onDeleteTenant={(id) => setDeleteTenantId(id)}
+            onEditTenant={(id) => setEditTenantId(id)}
           />
         ))}
 
@@ -238,13 +296,21 @@ const Index = () => {
             <p className="font-heading text-lg">All tenants are paid up! 🎉</p>
           </div>
         )}
-      </main>
+        </main>
+      </div>
 
       <AddTenantDialog
         open={!!addTenantUnit}
         onClose={() => setAddTenantUnit(null)}
         unitId={addTenantUnit || ''}
         onAdd={handleAddTenant}
+      />
+
+      <EditTenantDialog
+        open={!!editTenantId}
+        onClose={() => setEditTenantId(null)}
+        tenant={state.tenants.find(t => t.id === editTenantId) || null}
+        onSave={handleEditTenant}
       />
 
       <DeleteTenantDialog
@@ -267,7 +333,19 @@ const Index = () => {
         onClose={() => setSettingsOpen(false)}
         apartmentName={state.apartmentName}
         floors={state.floors}
-        onSave={handleUpdateName}
+        onSave={handleUpdateSettings}
+      />
+
+      <DuesDialog
+        open={duesOpen}
+        onClose={() => setDuesOpen(false)}
+        tenants={state.tenants}
+      />
+
+      <RevenueDialog
+        open={revenueOpen}
+        onClose={() => setRevenueOpen(false)}
+        tenants={state.tenants}
       />
     </div>
   );
